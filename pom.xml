@@ -4,7 +4,7 @@
 	<modelVersion>4.0.0</modelVersion>
 	<!-- <parent> <groupId>com.facebook.presto</groupId> <artifactId>presto-root</artifactId> 
 		<version>0.107</version> </parent> -->
-	<version>0.147</version>
+	<version>0.212</version>
 
 	<groupId>ml.prestoconnectors</groupId>
 	<artifactId>presto-oracle</artifactId>
@@ -35,7 +35,7 @@
 	</scm>
 
         <properties>
-                <dep.presto.version>0.147</dep.presto.version>
+                <dep.presto.version>0.212</dep.presto.version>
                 <dep.airlift.version>0.128</dep.airlift.version>
                 <dep.slice.version>0.21</dep.slice.version>
         </properties>
@@ -80,13 +80,13 @@
 		<dependency>
 			<groupId>com.google.guava</groupId>
 			<artifactId>guava</artifactId>
-			<version>18.0</version>
+			<version>24.1-jre</version>
 		</dependency>
 
 		<dependency>
 			<groupId>com.google.inject</groupId>
 			<artifactId>guice</artifactId>
-			<version>4.0-beta5</version>
+			<version>4.2.0</version>
 		</dependency>
 
 		<dependency>
@@ -102,9 +102,9 @@
         </dependency>
 
 		<dependency>
-			<groupId>ojdbc6</groupId>
-			<artifactId>ojdbc6</artifactId>
-			<version>11.2.0.3</version>
+			<groupId>oracle</groupId>
+			<artifactId>jdbc</artifactId>
+			<version>12.2.0.1</version>
 		</dependency>
 
 		<!-- Presto SPI -->

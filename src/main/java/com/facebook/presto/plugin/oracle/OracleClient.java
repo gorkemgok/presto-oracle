@@ -22,20 +22,18 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 
+import com.facebook.presto.plugin.jdbc.*;
+import com.facebook.presto.spi.ConnectorSession;
 import oracle.jdbc.OracleDriver;
 
 import org.apache.log4j.Logger;
 
-import com.facebook.presto.plugin.jdbc.BaseJdbcClient;
-import com.facebook.presto.plugin.jdbc.BaseJdbcConfig;
-import com.facebook.presto.plugin.jdbc.JdbcColumnHandle;
-import com.facebook.presto.plugin.jdbc.JdbcConnectorId;
-import com.facebook.presto.plugin.jdbc.JdbcTableHandle;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.SchemaTableName;
 import com.facebook.presto.spi.TableNotFoundException;
@@ -57,8 +55,8 @@ public class OracleClient extends BaseJdbcClient {
 
 	@Inject
 	public OracleClient(JdbcConnectorId connectorId, BaseJdbcConfig config,
-			OracleConfig oracleConfig) throws SQLException {
-		super(connectorId, config, "", new OracleDriver());
+			ConnectionFactory connectionFactory) throws SQLException {
+		super(connectorId, config, "", connectionFactory);
 		//the empty "" is to not use a quote to create queries
 		// BaseJdbcClient already gets these properties
 		// connectionProperties.setProperty("user", oracleConfig.getUser());
@@ -70,9 +68,9 @@ public class OracleClient extends BaseJdbcClient {
 
 	@Override
 	public Set<String> getSchemaNames() {
-		try (Connection connection = driver.connect(connectionUrl,
-				connectionProperties);
-				ResultSet resultSet = connection.getMetaData().getSchemas()) {
+		try (Connection connection = this.connectionFactory.openConnection();
+			 ResultSet resultSet = connection.getMetaData().getSchemas()
+		) {
 			ImmutableSet.Builder<String> schemaNames = ImmutableSet.builder();
 			while (resultSet.next()) {
 				String schemaName = resultSet.getString(1).toLowerCase();
@@ -95,8 +93,7 @@ public class OracleClient extends BaseJdbcClient {
 	@Nullable
 	@Override
 	public JdbcTableHandle getTableHandle(SchemaTableName schemaTableName) {
-		try (Connection connection = driver.connect(connectionUrl,
-				connectionProperties)) {
+		try (Connection connection = connectionFactory.openConnection()) {
 			DatabaseMetaData metadata = connection.getMetaData();
 			String jdbcSchemaName = schemaTableName.getSchemaName();
 			String jdbcTableName = schemaTableName.getTableName();
@@ -128,9 +125,8 @@ public class OracleClient extends BaseJdbcClient {
 	}
 
 	@Override
-	public List<JdbcColumnHandle> getColumns(JdbcTableHandle tableHandle) {
-		try (Connection connection = driver.connect(connectionUrl,
-				connectionProperties)) {
+	public List<JdbcColumnHandle> getColumns(ConnectorSession session, JdbcTableHandle tableHandle) {
+		try (Connection connection = connectionFactory.openConnection()) {
 			//If the table is mapped to another user you will need to get the synonym to that table
 			//So, in this case, is mandatory to use setIncludeSynonyms
 			( (oracle.jdbc.driver.OracleConnection)connection ).setIncludeSynonyms(true);
@@ -143,13 +139,19 @@ public class OracleClient extends BaseJdbcClient {
 				boolean found = false;
 				while (resultSet.next()) {
 					found = true;
-					Type columnType = toPrestoType(resultSet
-                            .getInt("DATA_TYPE"), resultSet.getInt("COLUMN_SIZE"));
+					int dataType = resultSet.getInt("DATA_TYPE");
+					int columnSize = resultSet.getInt("COLUMN_SIZE");
+					int decimalDigits = resultSet.getInt("DECIMAL_DIGITS");
+					if (dataType == 2 && columnSize == 0 && decimalDigits <= 0) {
+						dataType = 8;
+					}
+					JdbcTypeHandle jdbcTypeHandle = new JdbcTypeHandle(dataType, columnSize, decimalDigits);
+					Optional<ReadMapping> readMappingOptional = toPrestoType(session, jdbcTypeHandle);
 					// skip unsupported column types
-					if (columnType != null) {
+					if (readMappingOptional.isPresent()) {
+						Type columnType = readMappingOptional.get().getType();
 						String columnName = resultSet.getString("COLUMN_NAME");
-						columns.add(new JdbcColumnHandle(connectorId,
-								columnName, columnType));
+						columns.add(new JdbcColumnHandle(connectorId, columnName, jdbcTypeHandle, columnType));
 					}
 				}
 				if (!found) {
@@ -170,8 +172,7 @@ public class OracleClient extends BaseJdbcClient {
 
 	@Override
 	public List<SchemaTableName> getTableNames(@Nullable String schema) {
-		try (Connection connection = driver.connect(connectionUrl,
-				connectionProperties)) {
+		try (Connection connection = connectionFactory.openConnection()) {
 			DatabaseMetaData metadata = connection.getMetaData();
 			if (metadata.storesUpperCaseIdentifiers() && (schema != null)) {
 				schema = schema.toUpperCase();
